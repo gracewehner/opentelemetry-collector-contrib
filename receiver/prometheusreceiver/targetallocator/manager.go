@@ -25,6 +25,8 @@ import (
 	"go.opentelemetry.io/collector/receiver"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v2"
+
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver/apiserver"
 )
 
 type Manager struct {
@@ -35,6 +37,7 @@ type Manager struct {
 	initialScrapeConfigs   []*promconfig.ScrapeConfig
 	scrapeManager          *scrape.Manager
 	discoveryManager       *discovery.Manager
+	apiServerManager       *apiserver.Manager
 	enableNativeHistograms bool
 }
 
@@ -49,9 +52,10 @@ func NewManager(set receiver.Settings, cfg *Config, promCfg *promconfig.Config, 
 	}
 }
 
-func (m *Manager) Start(ctx context.Context, host component.Host, sm *scrape.Manager, dm *discovery.Manager) error {
+func (m *Manager) Start(ctx context.Context, host component.Host, sm *scrape.Manager, dm *discovery.Manager, am *apiserver.Manager) error {
 	m.scrapeManager = sm
 	m.discoveryManager = dm
+	m.apiServerManager = am
 	err := m.applyCfg()
 	if err != nil {
 		m.settings.Logger.Error("Failed to apply new scrape configuration", zap.Error(err))
@@ -183,7 +187,15 @@ func (m *Manager) applyCfg() error {
 		discoveryCfg[scrapeConfig.JobName] = scrapeConfig.ServiceDiscoveryConfigs
 		m.settings.Logger.Info("Scrape job added", zap.String("jobName", scrapeConfig.JobName))
 	}
-	return m.discoveryManager.ApplyConfig(discoveryCfg)
+	if err = m.discoveryManager.ApplyConfig(discoveryCfg); err != nil {
+		return err
+	}
+
+	if m.apiServerManager != nil {
+		//m.apiServerManager.ApplyConfig(m.promCfg)
+	}
+
+	return nil
 }
 
 func getScrapeConfigsResponse(httpClient *http.Client, baseURL string) (map[string]*promconfig.ScrapeConfig, error) {
