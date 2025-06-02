@@ -15,6 +15,7 @@ import (
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
+	promconfig "github.com/prometheus/prometheus/config"
 	api_v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,6 +25,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver/receivertest"
 
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver/apiserver"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver/internal/metadata"
 )
 
@@ -66,7 +68,7 @@ func TestPrometheusAPIServer(t *testing.T) {
 		require.NoError(t, err)
 		receiver, err := newPrometheusReceiver(receivertest.NewNopSettings(metadata.Type), &Config{
 			PrometheusConfig: cfg,
-			APIServer: &APIServer{
+			APIServer: &apiserver.Config{
 				Enabled: true,
 				ServerConfig: confighttp.ServerConfig{
 					Endpoint: endpoint,
@@ -178,6 +180,8 @@ func testPrometheusConfig(t *testing.T, endpoint string, receiver *pReceiver) {
 	newScrapeInterval := model.Duration(30 * time.Second)
 	receiver.cfg.PrometheusConfig.GlobalConfig.ScrapeInterval = newScrapeInterval
 	receiver.cfg.PrometheusConfig.ScrapeConfigs[0].ScrapeInterval = newScrapeInterval
+	promCfg := promconfig.Config(*receiver.cfg.PrometheusConfig)
+	receiver.apiServerManager.ApplyConfig(&promCfg)
 
 	// Call the API again and check if the change exists in the returned config
 	newPrometheusConfigResponse, err := callAPI(endpoint, "/status/config")

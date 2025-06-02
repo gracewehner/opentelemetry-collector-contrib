@@ -30,10 +30,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component/componenttest"
+	"go.opentelemetry.io/collector/config/confighttp"
 	"go.opentelemetry.io/collector/config/configopaque"
 	"go.opentelemetry.io/collector/config/configtls"
 	"go.opentelemetry.io/collector/receiver/receivertest"
 
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver/apiserver"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver/internal/metadata"
 )
 
@@ -732,11 +734,11 @@ func TestTargetAllocatorJobRetrieval(t *testing.T) {
 			defer allocator.Stop()
 
 			tc.cfg.Endpoint = allocator.srv.URL // set service URL with the automatic generated one
-			scrapeManager, discoveryManager := initPrometheusManagers(ctx, t)
+			scrapeManager, discoveryManager, apiserverManager := initPrometheusManagers(ctx, t)
 
 			baseCfg := promconfig.Config{GlobalConfig: promconfig.DefaultGlobalConfig}
 			manager := NewManager(receivertest.NewNopSettings(metadata.Type), tc.cfg, &baseCfg, false)
-			require.NoError(t, manager.Start(ctx, componenttest.NewNopHost(), scrapeManager, discoveryManager))
+			require.NoError(t, manager.Start(ctx, componenttest.NewNopHost(), scrapeManager, discoveryManager, apiserverManager))
 
 			allocator.wg.Wait()
 
@@ -924,11 +926,11 @@ func TestManagerSyncWithInitialScrapeConfigs(t *testing.T) {
 	allocator.Start()
 	defer allocator.Stop()
 	cfg.Endpoint = allocator.srv.URL // set service URL with the automatic generated one
-	scrapeManager, discoveryManager := initPrometheusManagers(ctx, t)
+	scrapeManager, discoveryManager, apiserverManager := initPrometheusManagers(ctx, t)
 
 	baseCfg := promconfig.Config{GlobalConfig: promconfig.DefaultGlobalConfig, ScrapeConfigs: initialScrapeConfigs}
 	manager := NewManager(receivertest.NewNopSettings(metadata.Type), cfg, &baseCfg, false)
-	require.NoError(t, manager.Start(ctx, componenttest.NewNopHost(), scrapeManager, discoveryManager))
+	require.NoError(t, manager.Start(ctx, componenttest.NewNopHost(), scrapeManager, discoveryManager, apiserverManager))
 
 	allocator.wg.Wait()
 
@@ -944,7 +946,7 @@ func TestManagerSyncWithInitialScrapeConfigs(t *testing.T) {
 	require.Equal(t, "job3", manager.promCfg.ScrapeConfigs[2].JobName)
 }
 
-func initPrometheusManagers(ctx context.Context, t *testing.T) (*scrape.Manager, *discovery.Manager) {
+func initPrometheusManagers(ctx context.Context, t *testing.T) (*scrape.Manager, *discovery.Manager, *apiserver.Manager) {
 	logger := promslog.NewNopLogger()
 	reg := prometheus.NewRegistry()
 	sdMetrics, err := discovery.RegisterSDMetrics(reg, discovery.NewRefreshMetrics(reg))
@@ -954,5 +956,13 @@ func initPrometheusManagers(ctx context.Context, t *testing.T) (*scrape.Manager,
 
 	scrapeManager, err := scrape.NewManager(&scrape.Options{}, logger, nil, nil, reg)
 	require.NoError(t, err)
-	return scrapeManager, discoveryManager
+
+	apiserverConfig := &apiserver.Config{
+		Enabled: true,
+		ServerConfig: confighttp.ServerConfig{
+			Endpoint: "9090",
+		},
+	}
+	apiserverManager := apiserver.NewManager(receivertest.NewNopSettings(metadata.Type), apiserverConfig, reg, reg)
+	return scrapeManager, discoveryManager, apiserverManager
 }
